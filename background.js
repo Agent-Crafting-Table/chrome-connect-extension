@@ -369,10 +369,17 @@ async function maybeOpenHelpOnce() {
 function requestFromRelay(command) {
   const id = command.id
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject })
+    const timer = setTimeout(() => {
+      if (pending.delete(id)) reject(new Error(`Command ${id} timed out`))
+    }, 35000)
+    pending.set(id, {
+      resolve: (v) => { clearTimeout(timer); resolve(v) },
+      reject: (e) => { clearTimeout(timer); reject(e) },
+    })
     try {
       sendToRelay(command)
     } catch (err) {
+      clearTimeout(timer)
       pending.delete(id)
       reject(err instanceof Error ? err : new Error(String(err)))
     }
