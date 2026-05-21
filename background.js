@@ -411,7 +411,7 @@ async function onRelayMessage(text) {
       const result = await handleForwardCdpCommand(msg)
       sendToRelay({ id: msg.id, result })
     } catch (err) {
-      sendToRelay({ id: msg.id, error: err instanceof Error ? err.message : String(err) })
+      try { sendToRelay({ id: msg.id, error: err instanceof Error ? err.message : String(err) }) } catch { /* WS closed */ }
     }
   }
 }
@@ -454,17 +454,19 @@ async function attachTab(tabId, opts = {}) {
   })
 
   if (!opts.skipAttachedEvent) {
-    sendToRelay({
-      method: 'forwardCDPEvent',
-      params: {
-        method: 'Target.attachedToTarget',
+    try {
+      sendToRelay({
+        method: 'forwardCDPEvent',
         params: {
-          sessionId,
-          targetInfo: { ...targetInfo, attached: true },
-          waitingForDebugger: false,
+          method: 'Target.attachedToTarget',
+          params: {
+            sessionId,
+            targetInfo: { ...targetInfo, attached: true },
+            waitingForDebugger: false,
+          },
         },
-      },
-    })
+      })
+    } catch { /* WS closed — reconnect will re-announce */ }
   }
 
   setBadge(tabId, 'on')
@@ -581,7 +583,13 @@ async function handleForwardCdpCommand(msg) {
   }
 
   if (method === 'Target.createTarget') {
-    const url = typeof params?.url === 'string' ? params.url : 'about:blank'
+    const rawUrl = typeof params?.url === 'string' ? params.url : ''
+    let parsedUrl
+    try { parsedUrl = new URL(rawUrl) } catch { throw new Error(`Invalid URL: ${rawUrl}`) }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error(`URL scheme not allowed: ${parsedUrl.protocol}`)
+    }
+    const url = rawUrl
     const tab = await chrome.tabs.create({ url, active: false })
     if (!tab.id) throw new Error('Failed to create tab')
     await new Promise((r) => setTimeout(r, 100))
