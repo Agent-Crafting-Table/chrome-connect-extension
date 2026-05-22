@@ -59,7 +59,13 @@ The relay enforces `CDP_ALLOWED` before forwarding commands. The extension forwa
 
 ## `relayUrl` storage validation
 
-`getRelayUrl()` validates `wss://` scheme before connecting. If the stored URL is invalid or uses a non-wss scheme, connection is **refused with an error** — there is no silent fallback. This prevents an attacker with `chrome.storage` write access from redirecting the extension to a rogue relay and exfiltrating the auth token.
+`getRelayUrl()` validates the URL before connecting. If invalid, connection is **refused with an error** — no silent fallback.
+
+Allowed:
+- `wss://` — any host (TLS required for non-loopback to prevent MITM token exfil)
+- `ws://` — loopback only (`127.0.0.1`, `localhost`, `::1`); loopback traffic cannot be intercepted at the network level so TLS is not required
+
+Rejected with error: `ws://` on any non-loopback host. This prevents an attacker with `chrome.storage` write access from redirecting the extension to a plaintext remote relay and exfiltrating the auth token via network interception.
 
 ## URL scheme allowlist (`Target.createTarget`)
 

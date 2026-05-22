@@ -35,16 +35,20 @@ function nowStack() {
   }
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+
 async function getRelayUrl() {
   const stored = await chrome.storage.local.get(['relayUrl'])
   const raw = String(stored.relayUrl || '').trim()
   if (!raw) return DEFAULT_RELAY_URL
   try {
     const parsed = new URL(raw)
-    if (parsed.protocol !== 'wss:') throw new Error('not wss')
+    const isWss = parsed.protocol === 'wss:'
+    const isLoopbackWs = parsed.protocol === 'ws:' && LOOPBACK_HOSTS.has(parsed.hostname)
+    if (!isWss && !isLoopbackWs) throw new Error('invalid scheme')
     return raw
   } catch {
-    throw new Error(`Invalid relay URL in storage (must be wss://): ${raw}`)
+    throw new Error(`Invalid relay URL in storage (use wss:// for remote or ws://127.0.0.1 for local): ${raw}`)
   }
 }
 
