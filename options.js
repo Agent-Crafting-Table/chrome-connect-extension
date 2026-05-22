@@ -66,6 +66,15 @@ async function save() {
   const relayUrlInput = document.getElementById('relay-url-input')
   const tokenInput = document.getElementById('token')
   const relayUrl = normalizeRelayUrl(relayUrlInput.value)
+  try {
+    const parsed = new URL(relayUrl)
+    const isWss = parsed.protocol === 'wss:'
+    const isLoopbackWs = parsed.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
+    if (!isWss && !isLoopbackWs) throw new Error('invalid scheme')
+  } catch {
+    setStatus('error', `Relay URL must be wss:// (remote) or ws://127.0.0.1 (local). Got: ${relayUrl}`)
+    return
+  }
   const token = String(tokenInput.value || '').trim()
   await chrome.storage.local.set({ relayUrl, gatewayToken: token })
   relayUrlInput.value = relayUrl

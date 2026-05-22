@@ -23,9 +23,6 @@ const tabBySession = new Map()
 /** @type {Map<string, number>} */
 const childSessionToTab = new Map()
 
-/** @type {Map<number, {resolve:(v:any)=>void, reject:(e:Error)=>void}>} */
-const pending = new Map()
-
 // ===== FIX #1 & #2: Auto-reconnect state =====
 let reconnectAttempt = 0
 let reconnectTimer = null
@@ -38,11 +35,21 @@ function nowStack() {
   }
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
 async function getRelayUrl() {
   const stored = await chrome.storage.local.get(['relayUrl'])
   const raw = String(stored.relayUrl || '').trim()
   if (!raw) return DEFAULT_RELAY_URL
-  return raw
+  try {
+    const parsed = new URL(raw)
+    const isWss = parsed.protocol === 'wss:'
+    const isLoopbackWs = parsed.protocol === 'ws:' && LOOPBACK_HOSTS.has(parsed.hostname)
+    if (!isWss && !isLoopbackWs) throw new Error('invalid scheme')
+    return raw
+  } catch {
+    throw new Error(`Invalid relay URL in storage (use wss:// for remote or ws://127.0.0.1 for local): ${raw}`)
+  }
 }
 
 async function getGatewayToken() {
@@ -148,10 +155,6 @@ async function ensureRelayConnection() {
 // ===== FIX #1: DON'T detach debugger sessions on WS drop =====
 function onRelayClosed(reason) {
   relayWs = null
-  for (const [id, p] of pending.entries()) {
-    pending.delete(id)
-    p.reject(new Error(`Relay disconnected (${reason})`))
-  }
 
   // Keep debugger attached — only update badge to show disconnected state.
   // When we reconnect, we'll re-announce existing sessions.
@@ -366,26 +369,6 @@ async function maybeOpenHelpOnce() {
   }
 }
 
-function requestFromRelay(command) {
-  const id = command.id
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (pending.delete(id)) reject(new Error(`Command ${id} timed out`))
-    }, 35000)
-    pending.set(id, {
-      resolve: (v) => { clearTimeout(timer); resolve(v) },
-      reject: (e) => { clearTimeout(timer); reject(e) },
-    })
-    try {
-      sendToRelay(command)
-    } catch (err) {
-      clearTimeout(timer)
-      pending.delete(id)
-      reject(err instanceof Error ? err : new Error(String(err)))
-    }
-  })
-}
-
 async function onRelayMessage(text) {
   /** @type {any} */
   let msg
@@ -401,15 +384,6 @@ async function onRelayMessage(text) {
     } catch {
       // ignore
     }
-    return
-  }
-
-  if (msg && typeof msg.id === 'number' && (msg.result !== undefined || msg.error !== undefined)) {
-    const p = pending.get(msg.id)
-    if (!p) return
-    pending.delete(msg.id)
-    if (msg.error) p.reject(new Error(String(msg.error)))
-    else p.resolve(msg.result)
     return
   }
 
@@ -590,10 +564,10 @@ async function handleForwardCdpCommand(msg) {
   }
 
   if (method === 'Target.createTarget') {
-    const rawUrl = typeof params?.url === 'string' ? params.url : ''
+    const rawUrl = typeof params?.url === 'string' ? params.url : 'about:blank'
     let parsedUrl
     try { parsedUrl = new URL(rawUrl) } catch { throw new Error(`Invalid URL: ${rawUrl}`) }
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    if (!['http:', 'https:', 'about:'].includes(parsedUrl.protocol)) {
       throw new Error(`URL scheme not allowed: ${parsedUrl.protocol}`)
     }
     const url = rawUrl
