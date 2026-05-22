@@ -44,8 +44,7 @@ async function getRelayUrl() {
     if (parsed.protocol !== 'wss:') throw new Error('not wss')
     return raw
   } catch {
-    console.warn(`[Artífice Relay] Invalid relayUrl in storage (must be wss://) — using default: ${raw}`)
-    return DEFAULT_RELAY_URL
+    throw new Error(`Invalid relay URL in storage (must be wss://): ${raw}`)
   }
 }
 

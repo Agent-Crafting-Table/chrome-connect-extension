@@ -12,25 +12,54 @@ When attached to a tab, the extension gives the relay server full Chrome DevTool
 
 This is intentional — it is the product. The operator explicitly attaches tabs to share them.
 
-## Trust boundaries
+## Two deployment models — different trust perimeters
+
+### Local relay (127.0.0.1)
 
 ```
-Relay server (127.0.0.1:18792)
+Bot process
+    │ owns relay
+    ▼
+Relay server (127.0.0.1:18792)  ← loopback only, no external network exposure
     ↓  wss:// token-authenticated
 Extension (chrome.debugger API)
     ↓  chrome.debugger.sendCommand
 Browser tab
 ```
 
-**The extension trusts the relay completely.** It forwards CDP commands from the relay to `chrome.debugger.sendCommand` without its own allowlist check. The relay (plugin) enforces `CDP_ALLOWED` before sending — the extension is a trusted executor, not an independent security boundary.
+Trust perimeter: the host machine. The relay is not reachable from outside. The auth token in transit never leaves the machine. The relay operator is the bot owner.
 
-Implication: if the relay is compromised or the extension connects to a rogue relay, the relay can issue any CDP command. The `relayUrl` validation (wss:// scheme only) raises the bar — storage compromise alone is not enough to redirect to a plaintext attacker endpoint.
+**Accepted for v1 single-tenant:** extension trusts relay completely; relay enforces `CDP_ALLOWED` before sending. If the relay process is compromised, an attacker on the same machine has browser control.
 
-**For v1 single-tenant with a loopback relay, this is the accepted design.** The relay runs on 127.0.0.1, the extension requires a pre-minted token, and the relay enforces the allowlist before the extension sees any command.
+### Hosted/public relay (wss://relay.example.com)
 
-## Before multi-tenant or public relay
+```
+Bot process
+    │  MCP / OpenClaw adapter
+    ▼
+Relay server (public endpoint, TLS)
+    ↓  wss:// token-authenticated
+Extension (chrome.debugger API)
+    ↓  chrome.debugger.sendCommand
+Browser tab
+```
 
-The extension should enforce `CDP_ALLOWED` independently before calling `chrome.debugger.sendCommand`. This makes the extension a second, independent security layer rather than relying solely on the relay's allowlist. Without this, a compromised relay (or a relay operated by a different party in a multi-tenant setup) can send unrestricted CDP commands.
+Trust perimeter expands to: the relay operator, the network path (TLS), and anyone who can compromise the relay process. The relay operator can issue any CDP command the extension forwards — which is all of them (see below).
+
+## The extension has no independent CDP allowlist
+
+The relay enforces `CDP_ALLOWED` before forwarding commands. The extension forwards whatever the relay sends to `chrome.debugger.sendCommand` without its own check.
+
+**For loopback relay:** acceptable. Relay is the sole trust boundary; if it's compromised the host is already lost.
+
+**For hosted relay:** the relay operator is not necessarily the same party as the browser owner. The extension should enforce `CDP_ALLOWED` independently before calling `chrome.debugger.sendCommand`, making it a second security layer that survives relay compromise. This is required before:
+
+- Multi-tenant deployments (multiple bots, one relay)
+- Any relay not operated by the browser owner
+
+## `relayUrl` storage validation
+
+`getRelayUrl()` validates `wss://` scheme before connecting. If the stored URL is invalid or uses a non-wss scheme, connection is **refused with an error** — there is no silent fallback. This prevents an attacker with `chrome.storage` write access from redirecting the extension to a rogue relay and exfiltrating the auth token.
 
 ## URL scheme allowlist (`Target.createTarget`)
 
@@ -39,8 +68,4 @@ The `Target.createTarget` handler validates the URL scheme before opening a new 
 - Allowed: `http:`, `https:`, `about:` (for `about:blank`)
 - Blocked: `javascript:`, `data:`, `chrome-extension:`, and all others
 
-Note: this only governs initial tab creation. Once a tab is open, `Page.navigate` (allowed by the relay's `CDP_ALLOWED`) can navigate to any http/https URL. The URL allowlist on `Target.createTarget` prevents scheme-based attacks on tab creation, not subsequent navigation.
-
-## `relayUrl` storage validation
-
-`getRelayUrl()` validates `wss://` scheme before connecting. An invalid stored URL falls back to `DEFAULT_RELAY_URL` with a `console.warn`. This prevents an attacker with `chrome.storage` write access from redirecting the extension to a plaintext `ws://` relay and exfiltrating the auth token via network traffic analysis.
+Note: this only governs initial tab creation. Once a tab is open, `Page.navigate` (in the relay's `CDP_ALLOWED`) can navigate to any http/https URL. The allowlist prevents scheme-based attacks at creation time, not subsequent navigation.
