@@ -35,7 +35,7 @@ function nowStack() {
   }
 }
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 async function getRelayUrl() {
   const stored = await chrome.storage.local.get(['relayUrl'])

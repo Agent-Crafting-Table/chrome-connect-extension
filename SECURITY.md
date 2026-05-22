@@ -21,7 +21,7 @@ Bot process
     │ owns relay
     ▼
 Relay server (127.0.0.1:18792)  ← loopback only, no external network exposure
-    ↓  wss:// token-authenticated
+    ↓  ws:// plaintext loopback (no network interception possible)
 Extension (chrome.debugger API)
     ↓  chrome.debugger.sendCommand
 Browser tab

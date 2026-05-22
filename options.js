@@ -69,7 +69,7 @@ async function save() {
   try {
     const parsed = new URL(relayUrl)
     const isWss = parsed.protocol === 'wss:'
-    const isLoopbackWs = parsed.protocol === 'ws:' && ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)
+    const isLoopbackWs = parsed.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
     if (!isWss && !isLoopbackWs) throw new Error('invalid scheme')
   } catch {
     setStatus('error', `Relay URL must be wss:// (remote) or ws://127.0.0.1 (local). Got: ${relayUrl}`)
