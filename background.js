@@ -1,4 +1,4 @@
-const DEFAULT_RELAY_URL = 'wss://relay.artificeia.mx'
+const DEFAULT_RELAY_URL = 'ws://127.0.0.1:18792'
 
 const BADGE = {
   on: { text: 'ON', color: '#FF5A36' },
