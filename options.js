@@ -1,4 +1,4 @@
-const DEFAULT_RELAY_URL = 'wss://relay.artificeia.mx'
+const DEFAULT_RELAY_URL = 'ws://127.0.0.1:18792'
 
 function normalizeRelayUrl(value) {
   const trimmed = String(value || '').trim()
